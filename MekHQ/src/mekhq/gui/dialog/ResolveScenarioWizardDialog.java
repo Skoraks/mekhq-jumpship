@@ -72,6 +72,7 @@ import megamek.client.ui.preferences.PreferencesNode;
 import megamek.client.ui.util.UIUtil;
 import megamek.common.equipment.GunEmplacement;
 import megamek.common.ui.FastJScrollPane;
+import megamek.common.units.Entity;
 import megamek.logging.MMLogger;
 import mekhq.MekHQ;
 import mekhq.campaign.Campaign;
@@ -129,6 +130,7 @@ public class ResolveScenarioWizardDialog extends JDialog {
      */
     private List<JCheckBox> checkboxesTotaled;
     private List<JButton> buttonsEditUnit;
+    private List<JButton> buttonsEditAmmo;
     private List<UnitStatus> unitStatuses;
     private List<JLabel> labelsUnitName;
     private List<JCheckBox> chkReinforcements;
@@ -396,10 +398,19 @@ public class ResolveScenarioWizardDialog extends JDialog {
         gridBagConstraints.insets = new Insets(5, 5, 0, 0);
         pnlUnitStatus.add(new JLabel(resourceMap.getString("totaled")), gridBagConstraints);
 
+        gridBagConstraints.gridx = 2;
+        pnlUnitStatus.add(new JLabel("View Unit"), gridBagConstraints);
+        
+        gridBagConstraints.gridx = 3;
+        pnlUnitStatus.add(new JLabel("Edit Unit"), gridBagConstraints);
+        
+        gridBagConstraints.gridx = 4;
+        pnlUnitStatus.add(new JLabel("Edit Ammo"), gridBagConstraints);
+
         boolean possibleReinforcement = (tracker.getScenario().getLinkedScenario() != 0);
         if (possibleReinforcement) {
             gridBagConstraints = new GridBagConstraints();
-            gridBagConstraints.gridx = 4;
+            gridBagConstraints.gridx = 5;
             gridBagConstraints.gridy = 1;
             gridBagConstraints.anchor = GridBagConstraints.CENTER;
             gridBagConstraints.insets = new Insets(5, 5, 0, 0);
@@ -413,6 +424,7 @@ public class ResolveScenarioWizardDialog extends JDialog {
         checkboxesTotaled = new ArrayList<>();
         unitStatuses = new ArrayList<>();
         buttonsEditUnit = new ArrayList<>();
+        buttonsEditAmmo = new ArrayList<>();
         labelsUnitName = new ArrayList<>();
         chkReinforcements = new ArrayList<>();
 
@@ -420,6 +432,7 @@ public class ResolveScenarioWizardDialog extends JDialog {
         JCheckBox chkTotaled;
         JButton btnViewUnit;
         JButton btnEditUnit;
+        JButton btnEditAmmo;
         JCheckBox chkReinforced;
 
         int gridY = 2;
@@ -451,6 +464,13 @@ public class ResolveScenarioWizardDialog extends JDialog {
             btnEditUnit.addActionListener(new EditUnitListener());
             buttonsEditUnit.add(btnEditUnit);
 
+            btnEditAmmo = new JButton("Edit Ammo");
+            btnEditAmmo.setEnabled(!status.isTotalLoss() && !status.getEntity().getAmmo().isEmpty());
+            btnEditAmmo.setActionCommand(unit.getId().toString());
+            btnEditAmmo.setName(Integer.toString(unitIndex));
+            btnEditAmmo.addActionListener(new EditAmmoListener());
+            buttonsEditAmmo.add(btnEditAmmo);
+
             chkReinforced = new JCheckBox("");
             chkReinforced.setVisible(possibleReinforcement);
             chkReinforced.setEnabled(!status.isTotalLoss() && unit.isFunctional());
@@ -476,6 +496,8 @@ public class ResolveScenarioWizardDialog extends JDialog {
             gridBagConstraints.gridx = 3;
             pnlUnitStatus.add(btnEditUnit, gridBagConstraints);
             gridBagConstraints.gridx = 4;
+            pnlUnitStatus.add(btnEditAmmo, gridBagConstraints);
+            gridBagConstraints.gridx = 5;
             gridBagConstraints.anchor = GridBagConstraints.NORTH;
             pnlUnitStatus.add(chkReinforced, gridBagConstraints);
             gridY++;
@@ -1994,8 +2016,10 @@ public class ResolveScenarioWizardDialog extends JDialog {
         @Override
         public void itemStateChanged(ItemEvent evt) {
             int idx = Integer.parseInt(((JCheckBox) evt.getItem()).getName());
-            buttonsEditUnit.get(idx).setEnabled(!checkboxesTotaled.get(idx).isSelected());
-            chkReinforcements.get(idx).setEnabled(!checkboxesTotaled.get(idx).isSelected());
+            boolean isTotaled = checkboxesTotaled.get(idx).isSelected();
+            buttonsEditUnit.get(idx).setEnabled(!isTotaled);
+            buttonsEditAmmo.get(idx).setEnabled(!isTotaled && !unitStatuses.get(idx).getEntity().getAmmo().isEmpty());
+            chkReinforcements.get(idx).setEnabled(!isTotaled);
         }
     }
 
@@ -2050,6 +2074,50 @@ public class ResolveScenarioWizardDialog extends JDialog {
             UUID id = UUID.fromString(evt.getActionCommand());
             int idx = Integer.parseInt(((JButton) evt.getSource()).getName());
             editUnit(id, idx, salvage);
+        }
+    }
+
+    private class EditAmmoListener implements ActionListener {
+        @Override
+        public void actionPerformed(ActionEvent evt) {
+            UUID id = UUID.fromString(evt.getActionCommand());
+            editAmmo(id);
+        }
+    }
+
+    /**
+     * Opens a dialog to edit ammo consumption for the specified unit
+     *
+     * @param id - UUID of unit to edit ammo for
+     */
+    private void editAmmo(UUID id) {
+        UnitStatus unitStatus = tracker.getUnitsStatus().get(id);
+        if ((unitStatus == null) || (unitStatus.getEntity() == null)) {
+            return;
+        }
+
+        Entity entity = unitStatus.getEntity();
+        if (entity.getAmmo().isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                "This unit has no ammo bins to edit.",
+                "No Ammo Found",
+                JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        EditAmmoDialog ammoDialog = new EditAmmoDialog(frame, entity);
+        ammoDialog.setVisible(true);
+
+        if (ammoDialog.wasConfirmed()) {
+            // Update unit status display to reflect any changes
+            unitStatus.getUnit().runDiagnostic(false);
+            // Refresh unit description to show current status
+            for (int i = 0; i < unitStatuses.size(); i++) {
+                if (unitStatuses.get(i).getUnit().getId().equals(id)) {
+                    labelsUnitName.get(i).setText(unitStatus.getDesc());
+                    break;
+                }
+            }
         }
     }
 
